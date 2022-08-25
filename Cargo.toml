@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 tcod = "*"
+rand = "0.3.9"
