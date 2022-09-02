@@ -37,6 +37,9 @@ const FOV_LIGHT_WALLS: bool = true;
 const TORCH_RADIUS: i32 = 10;
 
 const MAX_ROOM_MONSTERS: i32 = 3;
+const MAX_ROOM_ITEMS: i32 = 2;
+
+const INVENTORY_WIDTH: i32 = 50;
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 enum PlayerAction {
@@ -55,6 +58,12 @@ enum DeathCallBack {
     Player,
     Monster,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum Item {
+    Heal,
+}
+
 impl DeathCallBack {
     fn callback(self, object: &mut Object, game: &mut Game) {
         use DeathCallBack::*;
@@ -101,6 +110,7 @@ struct Object {
     alive: bool,
     fighter: Option<Fighter>,
     ai: Option<Ai>,
+    item: Option<Item>,
 }
 impl Object {
     pub fn new(x:i32, y: i32, char: char, name: &str, color: Color, blocks: bool) -> Self {
@@ -113,7 +123,9 @@ impl Object {
             blocks: blocks,
             alive: false,
             fighter: None,
-            ai: None,}
+            ai: None,
+            item: None,
+        }
     }
 
     pub fn draw(&self, con: &mut dyn Console) {
@@ -222,6 +234,7 @@ type Map = Vec<Vec<Tile>>;
 struct Game {
     map: Map,
     messages: Messages,
+    inventory: Vec<Object>
 }
 
 fn make_map(objects: &mut Vec<Object>) -> Map {
@@ -322,6 +335,19 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>)
             };
         monster.alive = true;
         objects.push(monster);
+
+        let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
+
+        for _ in 0..num_items {
+            let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+            let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+
+            if !is_blocked(x, y, map, objects) {
+                let mut object = Object::new(x, y, '!', "healing potion", VIOLET, false);
+                object.item = Some(Item::Heal);
+                objects.push(object);
+                }
+            }
         }
     }
 }
@@ -380,6 +406,17 @@ fn player_move_or_attack(dx: i32, dy: i32, game: &mut Game, objects: &mut [Objec
     }
 }
 
+fn pick_item_up(object_id: usize, game: &mut Game, objects: &mut Vec<Object>) {
+    if game.inventory.len() >= 26 {
+        game.messages.add(format!("Your inventory is full, cannot pickup {}.", objects[object_id].name), RED,);
+    }
+    else {
+        let item = objects.swap_remove(object_id);
+        game.messages.add(format!("You picked up a {}!", item.name), GREEN);
+        game.inventory.push(item);
+    }
+}
+
 fn player_death(player: &mut Object, game: &mut Game) {
     game.messages.add("You died!", RED);
 
@@ -397,7 +434,7 @@ fn monster_death(monster: &mut Object, game: &mut Game) {
     monster.name = format!("remains of {}", monster.name);
 }
 
-fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut [Object]) -> PlayerAction {
+fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> PlayerAction {
     use PlayerAction::*;
     use tcod::input::KeyCode::*;
 
@@ -411,6 +448,23 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut [Object]) -> Play
         TookTurn }
         (Key { code: Right, .. }, _, true ) => { player_move_or_attack(1, 0, game, objects);
         TookTurn }
+        (Key { code: Text, .. }, "g", true) => {
+            let item_id = objects
+                .iter()
+                .position(|object| object.pos() == objects[PLAYER].pos() && object.item.is_some());
+            if let Some(item_id) = item_id {
+                pick_item_up(item_id, game, objects);
+            }
+            DidntTakeTurn
+        }
+        (Key { code: Text, .. }, "i", true) => {
+            inventory_menu(
+                &game.inventory,
+                "Press the key next to an item to use it, or any other to cancel.\n", 
+                &mut tcod.root
+            );
+            TookTurn
+        }
         (Key { code: Enter, alt: true, .. }, _ , _) => {
             let fullscreen = tcod.root.is_fullscreen();
             tcod.root.set_fullscreen(!fullscreen);
@@ -431,6 +485,73 @@ fn get_names_under_mouse(mouse: Mouse, objects: &[Object], fov_map: &FovMap) -> 
         .collect::<Vec<_>>();
 
     names.join(", ")
+}
+
+fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, root: &mut Root) -> Option<usize> {
+    assert!(options.len() <= 26, "Cannot have a menu with more than 26 options");
+
+    let header_height = root.get_height_rect(0, 0, width, SCREEN_HEIGHT, header);
+    let height = options.len() as i32 + header_height;
+
+    let mut window = Offscreen::new(width, height);
+
+    window.set_default_foreground(WHITE);
+    window.print_rect_ex(
+        0,
+        0,
+        width,
+        height,
+        BackgroundFlag::None,
+        TextAlignment::Left,
+        header,
+    );
+
+    for (index, option_text) in options.iter().enumerate() {
+        let menu_letter = (b'a' + index as u8) as char;
+        let text = format!("({}) {}" , menu_letter, option_text.as_ref());
+        window.print_ex(
+            0,
+            header_height + index as i32,
+            BackgroundFlag::None,
+            TextAlignment::Left,
+            text,
+        );
+    }
+
+    let x = SCREEN_WIDTH / 2 - width / 2;
+    let y = SCREEN_HEIGHT / 2 - height / 2;
+    blit(&window, (0,0), (width, height), root, (x, y), 1.0, 0.7);
+
+    root.flush();
+    let key = root.wait_for_keypress(true);
+
+    if key.printable.is_alphabetic() {
+        let index = key.printable.to_ascii_lowercase() as usize - 'a' as usize;
+        if index < options.len() {
+            Some(index)
+        } else {
+            None
+        }
+    }
+    else {
+        None
+    }
+}
+
+fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Option<usize> {
+    let options = if inventory.len() == 0 {
+        vec!["Inventory is empty.".into()]
+    } else {
+        inventory.iter().map(|item| item.name.clone()).collect()
+    };
+
+    let inventory_index = menu(header, &options, INVENTORY_WIDTH, root);
+
+    if inventory.len() > 0 {
+        inventory_index
+    } else {
+        None
+    }
 }
 
 fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recompute: bool) {
@@ -578,6 +699,7 @@ fn main() {
     let mut game = Game {
         map: make_map(&mut objects),
         messages: Messages::new(),
+        inventory: vec![],
     };
 
     for y in 0..MAP_HEIGHT {
