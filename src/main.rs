@@ -40,6 +40,7 @@ const MAX_ROOM_MONSTERS: i32 = 3;
 const MAX_ROOM_ITEMS: i32 = 2;
 
 const INVENTORY_WIDTH: i32 = 50;
+const HEAL_AMOUNT: i32 = 4;
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 enum PlayerAction {
@@ -62,6 +63,11 @@ enum DeathCallBack {
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum Item {
     Heal,
+}
+
+enum UseResult {
+    UsedUp,
+    Cancelled,
 }
 
 impl DeathCallBack {
@@ -167,6 +173,14 @@ impl Object {
         }
         else {
             game.messages.add(format!("{} attacks {} but it has no effect!", self.name, target.name), WHITE);
+        }
+    }
+    pub fn heal(&mut self, amount: i32) {
+        if let Some(ref mut fighter) = self.fighter {
+            fighter.hp += amount;
+            if fighter.hp > fighter.max_hp {
+                fighter.hp = fighter.max_hp;
+            }
         }
     }
 }
@@ -458,12 +472,15 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> P
             DidntTakeTurn
         }
         (Key { code: Text, .. }, "i", true) => {
-            inventory_menu(
+            let inventory_index = inventory_menu(
                 &game.inventory,
                 "Press the key next to an item to use it, or any other to cancel.\n", 
                 &mut tcod.root
             );
-            TookTurn
+            if let Some(inventory_index) = inventory_index {
+                use_item(inventory_index, tcod, game, objects);
+            }
+            DidntTakeTurn
         }
         (Key { code: Enter, alt: true, .. }, _ , _) => {
             let fullscreen = tcod.root.is_fullscreen();
@@ -485,6 +502,47 @@ fn get_names_under_mouse(mouse: Mouse, objects: &[Object], fov_map: &FovMap) -> 
         .collect::<Vec<_>>();
 
     names.join(", ")
+}
+
+fn use_item(inventory_id: usize, tcod: &mut Tcod, game: &mut Game, objects: &mut [Object]) {
+    use Item::*;
+
+    if let Some(item) = game.inventory[inventory_id].item {
+        let on_use = match item {
+            Heal => cast_heal,
+        };
+        match on_use(inventory_id, tcod, game, objects) {
+            UseResult::UsedUp => {
+                game.inventory.remove(inventory_id);
+            }
+            UseResult::Cancelled => {
+                game.messages.add("Cancelled", WHITE);
+            }
+        }
+    } else {
+        game.messages.add(
+            format!("The {} cannot be used.", game.inventory[inventory_id].name),
+            WHITE,
+        );
+    }
+}
+
+fn cast_heal(
+    _inventory_id: usize,
+    _tcod: &mut Tcod,
+    game: &mut Game,
+    objects: &mut [Object],
+) -> UseResult {
+    if let Some(fighter) = objects[PLAYER].fighter {
+        if fighter.hp == fighter.max_hp {
+            game.messages.add("You are already at full health.", RED);
+            return UseResult::Cancelled;
+        }
+        game.messages.add("Your wounds start to feel better!", LIGHT_VIOLET);
+        objects[PLAYER].heal(HEAL_AMOUNT);
+        return UseResult::UsedUp;
+    }
+    UseResult::Cancelled
 }
 
 fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, root: &mut Root) -> Option<usize> {
