@@ -98,6 +98,15 @@ enum Slot {
     RightHand,
     Head,
 }
+imp std::fmt::Display:: for Slot {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            Slot::LeftHand => write!(f, "left hand"),
+            Slot::RightHand => write!(f, "right hand"),
+            Slot::Head => write!(f, "head"),
+        }
+    }
+}
 
 impl DeathCallBack {
     fn callback(self, object: &mut Object, game: &mut Game) {
@@ -797,12 +806,23 @@ fn pick_item_up(object_id: usize, game: &mut Game, objects: &mut Vec<Object>) {
     else {
         let item = objects.swap_remove(object_id);
         game.messages.add(format!("You picked up a {}!", item.name), GREEN);
+        let index = game.inventory.len();
+        let slot = item.equipment.map(|e| e.slot);
         game.inventory.push(item);
+
+        if let Some(slot) = slot {
+            if get_equipped_in_slot(slot, &game.inventory).is_none() {
+                game.inventory[index].equip(&mut game,messages);
+            }
+        }
     }
 }
 
 fn drop_item(inventory_id: usize, game: &mut Game, objects: &mut Vec<Object>) {
     let mut item = game.inventory.remove(inventory_id);
+    if item.equipment.is_some() {
+        item.dequip(&mut game.messages);
+    }
     item.set_pos(objects[PLAYER].x, objects[PLAYER].y);
     game.messages.add(
         format!("You dropped a {}.", item.name), YELLOW
@@ -962,7 +982,7 @@ fn use_item(inventory_id: usize, tcod: &mut Tcod, game: &mut Game, objects: &mut
             Lightning => cast_lightning,
             Fireball => cast_fireball,
             Confuse => cast_confuse,
-            Equipment => toggle__equipment,
+            Equipment => toggle_equipment,
         };
         match on_use(inventory_id, tcod, game, objects) {
             UseResult::UsedUp => {
@@ -1082,7 +1102,20 @@ fn cast_confuse(_inventory_id: usize, tcod: &mut Tcod, game: &mut Game, objects:
     }
 }
 
-fn toggle__equipment(
+fn get_equipped_in_slot(slot: Slot, inventory: &[Object]) -> Option<usize> {
+    for (inventory_id, item) in inventory.iter().enumerate() {
+        if item
+            .equipment
+            .as_ref()
+            .map_or(false, |e| e.equipped && e.slot == slot)
+        {
+            return Some(inventory_id);
+        }
+    }
+    None
+}
+
+fn toggle_equipment(
     inventory_id: usize,
     _tcod: &mut Tcod,
     game: &mut Game,
@@ -1095,6 +1128,9 @@ fn toggle__equipment(
     if equipment.equipped {
         game.inventory[inventory_id].dequip(&mut game.messages);
     } else {
+        if let Some(current) = get_equipped_in_slot(equipment.slot, &game.inventory) {
+            game.inventory[current].dequip(&mut game.messages);
+        }
         game.inventory[inventory_id].dequip(&mut game.messages);
     }
     UseResult::UsedAndKept
@@ -1159,7 +1195,17 @@ fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Option
     let options = if inventory.len() == 0 {
         vec!["Inventory is empty.".into()]
     } else {
-        inventory.iter().map(|item| item.name.clone()).collect()
+        inventory
+            .iter()
+            .map(|item| {
+                match item.equipment {
+                    Some(equipment) if equipment.equipped => {
+                        format!("{} (on {})", item.name, equipment.slot)
+                    }
+                    _ => item.name.clone(),
+                }
+            })
+            .collect()
     };
 
     let inventory_index = menu(header, &options, INVENTORY_WIDTH, root);
