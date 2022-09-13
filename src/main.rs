@@ -83,11 +83,20 @@ enum Item {
     Lightning,
     Fireball,
     Confuse,
+    Equipment,
 }
 
 enum UseResult {
     UsedUp,
+    UsedAndKept,
     Cancelled,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+enum Slot {
+    LeftHand,
+    RightHand,
+    Head,
 }
 
 impl DeathCallBack {
@@ -140,6 +149,7 @@ struct Object {
     item: Option<Item>,
     always_visible: bool,
     level: i32,
+    equipment: Option<Equipment>, 
 }
 impl Object {
     pub fn new(x:i32, y: i32, char: char, name: &str, color: Color, blocks: bool) -> Self {
@@ -156,6 +166,7 @@ impl Object {
             item: None,
             always_visible: false,
             level: 1,
+            Equipment: None,
         }
     }
 
@@ -215,6 +226,52 @@ impl Object {
             }
         }
     }
+    pub fn equip(&mut self, messages: &mut Messages) {
+        if self.item.is_none() {
+            messages.add(
+                format!("Can't equip {:?} because it's not an Item.", self),
+                RED,
+            );
+            return;
+        };
+        if let Some(ref mut equipment) = self.equipment {
+            if !equipment.equipped {
+                equipment.equipped = true;
+                messages.add(
+                    format!("Equipped {} on {}.", self.name, equipment.slot),
+                    LIGHT_GREEN,
+                );
+            }
+        } else {
+            messages.add(
+                format!("Can't equip {:?} because it's not an Equipment.", self),
+                RED,
+            );
+        }
+    }
+    pub fn dequip(&mut self, messages: &mut Messages) {
+        if self.item.is_none() {
+            messages.add(
+                format!("Can't dequip {:?} because it's not an Item.", self),
+                RED,
+            );
+            return;
+        };
+        if let Some(ref mut equipment) = self.equipment {
+            if equipment.equipped {
+                equipment.equipped = false;
+                messages.add(
+                    format!("Dequipped {} from {}.", self.name, equipment.slot),
+                    LIGHT_YELLOW,
+                );
+            }
+        } else {
+            messages.add(
+                format!("Can't dequip {:?} because it's not an Equipment.", self),
+                RED,
+            );
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -225,6 +282,12 @@ struct Fighter {
     power: i32,
     xp: i32,
     on_death: DeathCallBack,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+struct Equipment {
+    slot: Slot,
+    equipped: bool,
 }
 
 struct Transition {
@@ -486,6 +549,10 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32)
 
     let item_chances = &mut [
         Weighted {
+            weight: 1000,
+            item: Item::Equipment,
+        },
+        Weighted {
             weight: 35,
             item: Item::Heal,
         },
@@ -570,6 +637,12 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32)
 
             if !is_blocked(x, y, map, objects) {
                 let mut item = match item_choice.ind_sample(&mut rand::thread_rng()) {
+                    Item::Equipment => {
+                        let mut object = Object::new(x, y, '/', "sword", SKY, false);
+                        object.item = Some(Item::Equipment);
+                        object.equipment = Some(Equipment{equipped: false, slot: Slot::RightHand});
+                        object
+                    }
                     Item::Heal => {
                         let mut object = Object::new(x, y, '!', "healing potion", VIOLET, false);
                         object.item = Some(Item::Heal);
@@ -889,11 +962,13 @@ fn use_item(inventory_id: usize, tcod: &mut Tcod, game: &mut Game, objects: &mut
             Lightning => cast_lightning,
             Fireball => cast_fireball,
             Confuse => cast_confuse,
+            Equipment => toggle__equipment,
         };
         match on_use(inventory_id, tcod, game, objects) {
             UseResult::UsedUp => {
                 game.inventory.remove(inventory_id);
             }
+            UseResult::UsedAndKept => {}
             UseResult::Cancelled => {
                 game.messages.add("Cancelled", WHITE);
             }
@@ -1005,6 +1080,24 @@ fn cast_confuse(_inventory_id: usize, tcod: &mut Tcod, game: &mut Game, objects:
         game.messages.add("No enemy is close enough to strike.", RED );
         UseResult::Cancelled
     }
+}
+
+fn toggle__equipment(
+    inventory_id: usize,
+    _tcod: &mut Tcod,
+    game: &mut Game,
+    _objects: &mut [Object],
+) -> UseResult {
+    let equipment = match game.inventory[inventory_id].equipment {
+        Some(equipment) => equipment,
+        None => return UseResult::Cancelled,
+    };
+    if equipment.equipped {
+        game.inventory[inventory_id].dequip(&mut game.messages);
+    } else {
+        game.inventory[inventory_id].dequip(&mut game.messages);
+    }
+    UseResult::UsedAndKept
 }
 
 fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, root: &mut Root) -> Option<usize> {
@@ -1224,7 +1317,8 @@ fn new_game(tcod: &mut Tcod) -> (Game, Vec<Object>) {
         defense: 1, 
         power: 4, 
         xp: 0,
-        on_death: DeathCallBack::Player,});
+        on_death: DeathCallBack::Player,
+    });
 
     let mut objects = vec![player];
 
