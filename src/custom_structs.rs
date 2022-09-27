@@ -7,12 +7,12 @@
     use crate::custom_enums::*;
 
     pub struct Tcod {
-    pub root: Root,
-    con: Offscreen,
-    panel: Offscreen,
-    fov: FovMap,
-    key: Key,
-    mouse: Mouse,
+        pub root: Root,
+        pub con: Offscreen,
+        pub panel: Offscreen,
+        pub fov: FovMap,
+        pub key: Key,
+        pub mouse: Mouse,
     }
 
     #[derive(Serialize, Deserialize)]
@@ -33,19 +33,19 @@
 
     #[derive(Debug, Serialize, Deserialize)]
     pub struct Object {
-        x: i32,
-        y: i32,
+        pub x: i32,
+        pub y: i32,
         pub char: char,
         pub color: Color,
         pub name: String,
         pub blocks: bool,
-        alive: bool,
+        pub alive: bool,
         pub fighter: Option<Fighter>,
         pub ai: Option<Ai>,
-        item: Option<Item>,
-        always_visible: bool,
-        level: i32,
-        equipment: Option<Equipment>, 
+        pub item: Option<Item>,
+        pub always_visible: bool,
+        pub level: i32,
+        pub equipment: Option<Equipment>, 
     }
     impl Object {
         pub fn new(x:i32, y: i32, char: char, name: &str, color: Color, blocks: bool) -> Self {
@@ -211,33 +211,33 @@
 
     #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
     pub struct Fighter {
-        base_max_hp: i32,
-        hp: i32,
-        base_defense: i32,
-        base_power: i32,
+        pub base_max_hp: i32,
+        pub hp: i32,
+        pub base_defense: i32,
+        pub base_power: i32,
         pub xp: i32,
-        on_death: DeathCallBack,
+        pub on_death: DeathCallBack,
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
     pub struct Equipment {
-        slot: Slot,
-        equipped: bool,
-        power_bonus: i32,
-        defense_bonus: i32,
-        max_hp_bonus: i32,
+        pub slot: Slot,
+        pub equipped: bool,
+        pub power_bonus: i32,
+        pub defense_bonus: i32,
+        pub max_hp_bonus: i32,
     }
 
     pub struct Transition {
-        level: u32,
-        value: u32,
+        pub level: u32,
+        pub value: u32,
     }
 
     #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Tile {
-        blocked: bool,
-        explored: bool,
-        block_sight: bool,
+        pub blocked: bool,
+        pub explored: bool,
+        pub block_sight: bool,
     }
     impl Tile {
         pub fn empty() -> Self {
@@ -258,10 +258,10 @@
 
     #[derive(Clone, Copy, Debug)]
     pub struct Rect {
-        x1: i32,
-        y1: i32,
-        x2: i32,
-        y2: i32,
+        pub x1: i32,
+        pub y1: i32,
+        pub x2: i32,
+        pub y2: i32,
     }
     impl Rect {
         pub fn new(x: i32, y:i32, w: i32, h: i32) -> Self {
@@ -282,12 +282,12 @@
         }
     }
 
-    type Map = Vec<Vec<Tile>>;
+    pub type Map = Vec<Vec<Tile>>;
 
     #[derive(Serialize, Deserialize)]
     pub struct Game {
-        map: Map,
+        pub map: Map,
         pub messages: Messages,
-        inventory: Vec<Object>,
-        dungeon_level: u32,
+        pub inventory: Vec<Object>,
+        pub dungeon_level: u32,
     }

@@ -1,11 +1,13 @@
-use crate::custom_structs::*;
 use tcod::console::*;
 use tcod::colors::*;
 
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
 
-
+use crate::custom_structs::*;
+use crate::game_states::*;
+use crate::rendering::*;
+use crate::message_box::*;
 
 pub fn main_menu(tcod: &mut Tcod) {
     let img = tcod::image::Image::from_file("menu_background.png").ok().expect("Background image not found");
