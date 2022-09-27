@@ -54,6 +54,10 @@ const LEVEL_UP_BASE: i32 = 200;
 const LEVEL_UP_FACTOR: i32 = 150;
 const CHARACTER_SCREEN_WIDTH: i32 = 30;
 
+mod menu;
+mod deaths;
+mod custom_enums;
+mod custom_structs;
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 enum PlayerAction {
@@ -489,7 +493,7 @@ fn level_up(tcod: &mut Tcod, game: &mut Game, objects: &mut [Object]) {
         let fighter = player.fighter.as_mut().unwrap();
         let mut choice = None;
         while choice.is_none() {
-            choice = menu(
+            choice = menu::menu(
                 "Level up! Choose a stat to raise:\n",
                 &[
                     format!("Constitution (+20 HP, from {})", fighter.base_max_hp),
@@ -545,8 +549,7 @@ fn create_v_tunnel(y1: i32, y2: i32, x: i32, map: &mut Map) {
     }
 }
 
-fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32)
-{
+fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32){
     use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
 
     let max_monsters = from_dungeon_level(
@@ -901,27 +904,6 @@ fn drop_item(inventory_id: usize, game: &mut Game, objects: &mut Vec<Object>) {
     objects.push(item);
 }
 
-fn player_death(player: &mut Object, game: &mut Game) {
-    game.messages.add("You died!", RED);
-
-    player.char = '%';
-    player.color = DARK_RED;
-}
-
-fn monster_death(monster: &mut Object, game: &mut Game) {
-    game.messages.add(
-        format!(
-            "{} is dead! You gain {} experience points", 
-            monster.name, monster.fighter.unwrap().xp), 
-        ORANGE);
-    monster.char = '%';
-    monster.color = DARK_RED;
-    monster.blocks = false;
-    monster.fighter = None;
-    monster.ai = None;
-    monster.name = format!("remains of {}", monster.name);
-}
-
 fn handle_keys(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) -> PlayerAction {
     use PlayerAction::*;
     use tcod::input::KeyCode::*;
@@ -1092,8 +1074,7 @@ fn cast_heal(
     _inventory_id: usize,
     _tcod: &mut Tcod,
     game: &mut Game,
-    objects: &mut [Object],
-) -> UseResult {
+    objects: &mut [Object],) -> UseResult {
     let player = &mut objects[PLAYER];
     if let Some(fighter) = player.fighter {
         if fighter.hp == player.max_hp(game) {
@@ -1111,8 +1092,7 @@ fn cast_lightning(
     _inventory_id: usize,
     tcod: &mut Tcod,
     game: &mut Game,
-    objects: &mut [Object],
-) -> UseResult {
+    objects: &mut [Object],) -> UseResult {
     let monster_id = closest_monster(tcod, objects, LIGHTNING_RANGE);
     if let Some(monster_id) = monster_id {
         game.messages.add(
@@ -1192,8 +1172,7 @@ fn toggle_equipment(
     inventory_id: usize,
     _tcod: &mut Tcod,
     game: &mut Game,
-    _objects: &mut [Object],
-) -> UseResult {
+    _objects: &mut [Object],) -> UseResult {
     let equipment = match game.inventory[inventory_id].equipment {
         Some(equipment) => equipment,
         None => return UseResult::Cancelled,
@@ -1207,61 +1186,6 @@ fn toggle_equipment(
         game.inventory[inventory_id].dequip(&mut game.messages);
     }
     UseResult::UsedAndKept
-}
-
-fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, root: &mut Root) -> Option<usize> {
-    assert!(options.len() <= 26, "Cannot have a menu with more than 26 options");
-
-    let header_height = if header.is_empty() {
-        0
-    } else {
-        root.get_height_rect(0, 0, width, SCREEN_HEIGHT, header)
-    };
-    let height = options.len() as i32 + header_height;
-
-    let mut window = Offscreen::new(width, height);
-
-    window.set_default_foreground(WHITE);
-    window.print_rect_ex(
-        0,
-        0,
-        width,
-        height,
-        BackgroundFlag::None,
-        TextAlignment::Left,
-        header,
-    );
-
-    for (index, option_text) in options.iter().enumerate() {
-        let menu_letter = (b'a' + index as u8) as char;
-        let text = format!("({}) {}" , menu_letter, option_text.as_ref());
-        window.print_ex(
-            0,
-            header_height + index as i32,
-            BackgroundFlag::None,
-            TextAlignment::Left,
-            text,
-        );
-    }
-
-    let x = SCREEN_WIDTH / 2 - width / 2;
-    let y = SCREEN_HEIGHT / 2 - height / 2;
-    blit(&window, (0,0), (width, height), root, (x, y), 1.0, 0.7);
-
-    root.flush();
-    let key = root.wait_for_keypress(true);
-
-    if key.printable.is_alphabetic() {
-        let index = key.printable.to_ascii_lowercase() as usize - 'a' as usize;
-        if index < options.len() {
-            Some(index)
-        } else {
-            None
-        }
-    }
-    else {
-        None
-    }
 }
 
 fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Option<usize> {
@@ -1281,7 +1205,7 @@ fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Option
             .collect()
     };
 
-    let inventory_index = menu(header, &options, INVENTORY_WIDTH, root);
+    let inventory_index = menu::menu(header, &options, INVENTORY_WIDTH, root);
 
     if inventory.len() > 0 {
         inventory_index
@@ -1483,7 +1407,7 @@ fn load_game() -> Result<(Game, Vec<Object>), Box<dyn Error>> {
 
 fn msgbox(text: &str, width: i32, root: &mut Root) {
     let options: &[&str] = &[];
-    menu(text, options, width, root);
+    menu::menu(text, options, width, root);
 }
 
 fn play_game(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) {
@@ -1516,63 +1440,16 @@ fn play_game(tcod: &mut Tcod, game: &mut Game, objects: &mut Vec<Object>) {
                 if objects[id].ai.is_some() {
                     ai_take_turn(id, &tcod, game, objects);
                 }
-                }
             }
-        }
-    }
-
-fn main_menu(tcod: &mut Tcod) {
-    let img = tcod::image::Image::from_file("menu_background.png").ok().expect("Background image not found");
-
-    while !tcod.root.window_closed() {
-        tcod::image::blit_2x(&img, (0, 0), (-1, -1), &mut tcod.root, (0, 0));
-
-        let choices = &["Play a new game", "Continue last game", "Quit"];
-
-        tcod.root.set_default_foreground(LIGHT_YELLOW);
-        tcod.root.print_ex(
-            SCREEN_WIDTH / 2,
-            SCREEN_HEIGHT / 2 - 4, 
-            BackgroundFlag::None, 
-            TextAlignment::Center, 
-            "TOMBS OF THE ANCIENT KINGS", 
-        );
-        tcod.root.print_ex(
-            SCREEN_WIDTH / 2,
-            SCREEN_HEIGHT - 2,
-            BackgroundFlag::None,
-            TextAlignment::Center,
-            "By: Ryan Bourdais"
-        );
-
-        let choice = menu("", choices, 24, &mut tcod.root);
-
-        match choice {
-            Some(0) => {
-                let (mut game, mut objects) = new_game(tcod);
-                play_game(tcod, &mut game, &mut objects);
-            }
-            Some(1) => {
-                match load_game() {
-                    Ok((mut game, mut objects)) => {
-                        initialise_fov(tcod, &game.map);
-                        play_game(tcod, &mut game, &mut objects);
-                    }
-                    Err(_e) => {
-                        msgbox("\nNo saved game to load.\n", 24, &mut tcod.root);
-                        continue;
-                    }
-                }
-            }
-            Some(2) => {
-                break;
-            }
-            _ => {}
         }
     }
 }
 
+mod helloWorld;
+
 fn main() {
+    helloWorld::Hello();
+
     tcod::system::set_fps(LIMIT_FPS);
 
     let root = Root::initializer()
@@ -1582,7 +1459,7 @@ fn main() {
         .title("RustLike Game")
         .init();
 
-    let mut tcod = Tcod { 
+    let mut tcod = custom_structs::Tcod { 
         root, 
         con: Offscreen::new(MAP_WIDTH, MAP_HEIGHT), 
         panel: Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT), 
@@ -1591,7 +1468,6 @@ fn main() {
         mouse: Default::default(),
     }; 
 
-    main_menu(&mut tcod);
+    menu::main_menu(&mut tcod);
 
 }
-
