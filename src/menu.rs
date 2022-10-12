@@ -10,10 +10,10 @@ use crate::rendering::*;
 use crate::message_box::*;
 
 pub fn main_menu(tcod: &mut Tcod) {
-    let img = tcod::image::Image::from_file("menu_background.png").ok().expect("Background image not found");
+    //let img = tcod::image::Image::from_file("menu_background.png").ok().expect("Background image not found");
 
     while !tcod.root.window_closed() {
-        tcod::image::blit_2x(&img, (0, 0), (-1, -1), &mut tcod.root, (0, 0));
+        // tcod::image::blit_2x(&img, (0, 0), (-1, -1), &mut tcod.root, (0, 0));
 
         let choices = &["Play a new game", "Continue last game", "Quit"];
 
